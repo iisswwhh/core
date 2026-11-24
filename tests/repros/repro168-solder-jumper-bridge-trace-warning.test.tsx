@@ -27,6 +27,12 @@ test("solder jumper bridge traces should not generate disconnected endpoint erro
   // DRC should tolerate the floating-point representation difference in
   // |0.7112 - 1.0414| versus 0.3302 (halfWidth).
   const traceErrors = circuit.db.pcb_trace_error?.list() ?? []
-  console.log(traceErrors[0]?.message)
   expect(traceErrors.length).toBe(0)
+  const bridge = circuit.db.pcb_trace.list()[0]
+  expect(
+    circuit.db.source_trace.get(bridge.source_trace_id!)
+      ?.connected_source_port_ids,
+  ).toEqual(
+    circuit.db.source_component_internal_connection.list()[0].source_port_ids,
+  )
 })

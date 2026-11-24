@@ -21,6 +21,7 @@ import {
   shouldSwapOrientation,
 } from "lib/utils/schematic/getRotatedSymbolName"
 import { getSchematicComponentWithTextBounds } from "lib/utils/schematic/getSchematicComponentWithTextBounds"
+import { isSourceTraceInternalConnection } from "lib/utils/circuit-json/is-source-trace-internal-connection"
 import type { z } from "zod"
 import type { Group } from "./Group"
 import type { AxisDirection } from "./Group_doInitialSchematicTraceRender/getSide"
@@ -647,12 +648,14 @@ function convertTreeToMatchPackInputProblem(
     })),
   )
 
+  const internalConnections = db.source_component_internal_connection.list()
   for (const [connectivityKey, pins] of connectivityGroups) {
     const tracesWithThisKey = db.source_trace
       .list()
       .filter(
-        (trace: any) =>
-          trace.subcircuit_connectivity_map_key === connectivityKey,
+        (trace) =>
+          trace.subcircuit_connectivity_map_key === connectivityKey &&
+          !isSourceTraceInternalConnection(trace, internalConnections),
       )
 
     const hasNetConnections = tracesWithThisKey.some(

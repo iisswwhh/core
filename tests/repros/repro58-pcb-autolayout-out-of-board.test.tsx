@@ -91,6 +91,7 @@ test(
 
     // TODO uncomment when fixed
     //expect(circuit.db.pcb_component_outside_board_error.list()).toEqual([])
+    expect(circuit.db.pcb_component_outside_board_error.list()).toHaveLength(3)
 
     expect(circuitJson).toMatchPcbSnapshot(import.meta.path)
   },

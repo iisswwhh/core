@@ -1,4 +1,11 @@
-import { type PcbTraceRoutePoint, pcb_trace_route_point } from "circuit-json"
+import {
+  type PcbTraceRoutePoint,
+  pcb_trace_route_point,
+  type PcbTrace as CircuitJsonPcbTrace,
+  type SourceNet,
+} from "circuit-json"
+import type { PcbPortId } from "lib/utils/circuit-json/circuit-json-id-types"
+import { remapInflatedPcbPortId } from "lib/utils/circuit-json/remap-inflated-pcb-port-id"
 import { applyToPoint } from "transformation-matrix"
 import { z } from "zod"
 import { getViaSpanLayers } from "lib/utils/getViaSpanLayers"
@@ -16,6 +23,9 @@ export type PcbTraceProps = z.infer<typeof pcbTraceProps>
 
 export class PcbTrace extends PrimitiveComponent<typeof pcbTraceProps> {
   pcb_trace_id: string | null = null
+  _inflatedPcbTrace?: CircuitJsonPcbTrace
+  _inflatedPcbPortSelectors?: Map<PcbPortId, string>
+  _inflatedSourceNetName?: SourceNet["name"]
   // Imported footprints can already supply the physical via as a pcb_via.
   _materializedRouteViaIndices = new Set<number>()
   // Marks radiating copper created by Antenna, never its feed connection.
@@ -35,6 +45,18 @@ export class PcbTrace extends PrimitiveComponent<typeof pcbTraceProps> {
     const { _parsedProps: props } = this
     const container = this.getPrimitiveContainer()!
     const subcircuit = this.getSubcircuit()
+    let sourceTraceId = props.source_trace_id
+    if (this._inflatedSourceNetName !== undefined) {
+      const sourceNet = db.source_net.getWhere({
+        name: this._inflatedSourceNetName,
+        subcircuit_id: subcircuit.subcircuit_id!,
+      })
+      if (!sourceNet)
+        throw new Error(
+          `Cannot restore imported trace: net ${this._inflatedSourceNetName} is missing`,
+        )
+      sourceTraceId = sourceNet.source_net_id
+    }
 
     // Apply parent transformation to each point in the route
     const { isFlipped, maybeFlipLayer } = this._getPcbPrimitiveFlippedHelpers()
@@ -77,11 +99,16 @@ export class PcbTrace extends PrimitiveComponent<typeof pcbTraceProps> {
       } as PcbTraceRoutePoint
     })
 
+    const { pcb_trace_id: _originalPcbTraceId, ...importedTrace } =
+      this._inflatedPcbTrace ?? {}
     const pcb_trace = db.pcb_trace.insert({
+      ...importedTrace,
       pcb_component_id: container.pcb_component_id!,
-      source_trace_id: props.source_trace_id,
+      source_trace_id: sourceTraceId,
       route: transformedRoute,
-      is_antenna_trace: this.isAntennaTrace,
+      ...(this._inflatedPcbTrace
+        ? {}
+        : { is_antenna_trace: this.isAntennaTrace }),
       subcircuit_id: subcircuit?.subcircuit_id ?? undefined,
       pcb_group_id: this.getGroup()?.pcb_group_id ?? undefined,
     })
@@ -112,6 +139,25 @@ export class PcbTrace extends PrimitiveComponent<typeof pcbTraceProps> {
         pcb_group_id: pcb_trace.pcb_group_id,
       })
     }
+  }
+
+  doInitialPcbPortAttachment() {
+    if (!this._inflatedPcbPortSelectors || !this.pcb_trace_id) return
+    const { db } = this.root!
+    const trace = db.pcb_trace.get(this.pcb_trace_id)!
+    db.pcb_trace.update(this.pcb_trace_id, {
+      route: trace.route.map((point) => {
+        if (point.route_type !== "wire") return point
+        return {
+          ...point,
+          start_pcb_port_id: remapInflatedPcbPortId(
+            this,
+            point.start_pcb_port_id,
+          ),
+          end_pcb_port_id: remapInflatedPcbPortId(this, point.end_pcb_port_id),
+        }
+      }),
+    })
   }
 
   getPcbSize(): { width: number; height: number } {

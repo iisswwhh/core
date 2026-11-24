@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import type { AutoroutingEndEvent } from "lib/events"
 import type { FanoutTracePath } from "lib/index"
 import { getTestFixture } from "tests/fixtures/get-test-fixture"
+import { reversePcbTraceRoute } from "lib/utils/reverse-pcb-trace-route"
 
 test("saved routes round-trip copper spanning two connections on the same net", async () => {
   const board = (pcbTracePaths?: FanoutTracePath[]) => (
@@ -33,8 +34,16 @@ test("saved routes round-trip copper spanning two connections on the same net", 
   replay.add(board(savedPaths))
   await replay.renderUntilSettled()
   expect(replay.db.pcb_autorouting_error.list()).toEqual([])
-  expect(replay.db.pcb_trace.list().map(({ route }) => route)).toEqual(
-    circuit.db.pcb_trace.list().map(({ route }) => route),
-  )
+  const originalTraces = circuit.db.pcb_trace.list()
+  const replayTraces = replay.db.pcb_trace.list()
+  expect(replayTraces).toHaveLength(originalTraces.length)
+  for (const [index, trace] of replayTraces.entries()) {
+    const originalRoute = originalTraces[index].route
+    // Direction may follow a different equivalent source branch on replay.
+    // Every coordinate, layer, width and endpoint reference must be preserved.
+    expect([originalRoute, reversePcbTraceRoute(originalRoute)]).toContainEqual(
+      trace.route,
+    )
+  }
   await expect(replay).toMatchPcbSnapshot(import.meta.path)
 })

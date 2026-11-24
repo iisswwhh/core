@@ -22,6 +22,7 @@ test("accepted phase traces render while the next routing phase is pending", asy
         type: "pcb_trace",
         pcb_trace_id: `${connection.name}_routed`,
         connection_name: connection.source_trace_id ?? connection.name,
+        source_trace_id: connection.source_trace_id,
         route: connection.pointsToConnect.map((point) => ({
           route_type: "wire",
           x: point.x,

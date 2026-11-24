@@ -1,7 +1,9 @@
+import type { PcbPortId } from "lib/utils/circuit-json/circuit-json-id-types"
 import type {
   LayerRef,
   PcbTrace,
   PcbTraceRoutePoint,
+  SourcePort,
   SourceTrace,
 } from "circuit-json"
 import { Trace } from "lib/components/primitive-components/Trace/Trace"
@@ -36,43 +38,45 @@ const getSelectorPath = (
   return path_parts.join(" > ")
 }
 
+function getSourcePortSelector(
+  sourcePort: SourcePort,
+  inflatorContext: InflatorContext,
+) {
+  const { injectionDb } = inflatorContext
+  if (sourcePort.source_component_id) {
+    const sourceComponent = injectionDb.source_component.get(
+      sourcePort.source_component_id,
+    )
+    if (sourceComponent) {
+      // This is a port on a component, e.g. .G1 > .R1 > .pin1
+      const path = getSelectorPath(
+        {
+          name: sourceComponent.name,
+          source_group_id: sourceComponent.source_group_id,
+        },
+        inflatorContext,
+      )
+      return `${path} > .${sourcePort.name}`
+    }
+  } else {
+    // This is a port on a group, usually the root group of the subcircuit.
+    // e.g. .P1
+    return `.${sourcePort.name}`
+  }
+}
+
 export function inflateSourceTrace(
   sourceTrace: SourceTrace,
   inflatorContext: InflatorContext,
 ) {
   const { injectionDb, subcircuit } = inflatorContext
-
   const connectedSelectors: string[] = []
 
   // Get selectors for connected ports
   for (const sourcePortId of sourceTrace.connected_source_port_ids) {
     const sourcePort = injectionDb.source_port.get(sourcePortId)
-    if (!sourcePort) {
-      continue
-    }
-
-    let selector: string | undefined
-    if (sourcePort.source_component_id) {
-      const sourceComponent = injectionDb.source_component.get(
-        sourcePort.source_component_id,
-      )
-      if (sourceComponent) {
-        // This is a port on a component, e.g. .G1 > .R1 > .pin1
-        const path = getSelectorPath(
-          {
-            name: sourceComponent.name,
-            source_group_id: sourceComponent.source_group_id,
-          },
-          inflatorContext,
-        )
-        selector = `${path} > .${sourcePort.name}`
-      }
-    } else {
-      // This is a port on a group, usually the root group of the subcircuit.
-      // e.g. .P1
-      selector = `.${sourcePort.name}`
-    }
-
+    if (!sourcePort) continue
+    const selector = getSourcePortSelector(sourcePort, inflatorContext)
     if (selector) {
       connectedSelectors.push(selector)
     }
@@ -139,6 +143,10 @@ export function inflateSourceTrace(
 
   const trace = new Trace(traceProps)
   trace._inflatedPcbTraces = pcbTraces.length > 0 ? pcbTraces : undefined
+  trace._inflatedPcbPortSelectors = getInflatedPcbPortSelectors(
+    pcbTraces,
+    inflatorContext,
+  )
   trace._inflatedPcbVias = pcbTrace
     ? injectionDb.pcb_via
         .list()
@@ -148,4 +156,30 @@ export function inflateSourceTrace(
     : undefined
 
   subcircuit.add(trace)
+}
+
+export function getInflatedPcbPortSelectors(
+  pcbTraces: PcbTrace[],
+  inflatorContext: InflatorContext,
+) {
+  const { injectionDb } = inflatorContext
+  const pcbPortSelectors = new Map<PcbPortId, string>()
+  for (const pcbTrace of pcbTraces) {
+    for (const point of pcbTrace.route) {
+      if (point.route_type !== "wire") continue
+      for (const pcbPortId of [
+        point.start_pcb_port_id,
+        point.end_pcb_port_id,
+      ]) {
+        if (!pcbPortId) continue
+        const pcbPort = injectionDb.pcb_port.get(pcbPortId)
+        if (!pcbPort?.source_port_id) continue
+        const sourcePort = injectionDb.source_port.get(pcbPort.source_port_id)
+        if (!sourcePort) continue
+        const selector = getSourcePortSelector(sourcePort, inflatorContext)
+        if (selector) pcbPortSelectors.set(pcbPortId, selector)
+      }
+    }
+  }
+  return pcbPortSelectors
 }

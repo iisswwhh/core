@@ -75,7 +75,8 @@ test("a declared ground pour allows a short connection to the plane", async () =
       trace.route.some(
         (point) =>
           point.route_type === "wire" &&
-          point.start_pcb_port_id === groundPort.pcb_port_id,
+          (point.start_pcb_port_id === groundPort.pcb_port_id ||
+            point.end_pcb_port_id === groundPort.pcb_port_id),
       ),
     )!.route
   const routePositions = groundRoute.flatMap(getRoutePointPositions)

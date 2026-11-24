@@ -1861,7 +1861,6 @@ export class Group<Props extends z.ZodType<any, any, any> = typeof groupProps>
                 ...trace,
                 source_trace_id: trace.connection_name,
               },
-              subcircuit_id: this.subcircuit_id,
             })
             // A net route resolves to its source_net; the test point joins
             // that net through one of the net's own source traces.
@@ -2013,6 +2012,32 @@ export class Group<Props extends z.ZodType<any, any, any> = typeof groupProps>
               stageOutputPcbTraces: traces,
             })
         }
+        // A fanout request may have a synthetic name. Preserve the source owner
+        // from that exact input request before handing its copper downstream.
+        stageOutputTraces = stageOutputTraces.map((trace) => {
+          const requestedSrjConnection = simpleRouteJson.connections.find(
+            (connection) => connection.name === trace.connection_name,
+          )
+          if (!requestedSrjConnection?.source_trace_id) return trace
+          if (trace.source_trace_id) {
+            if (
+              trace.source_trace_id !== requestedSrjConnection.source_trace_id
+            ) {
+              getSourceTraceIdForRoutedTrace({
+                db,
+                trace: {
+                  ...trace,
+                  connection_name: requestedSrjConnection.source_trace_id,
+                },
+              })
+            }
+            return trace
+          }
+          return {
+            ...trace,
+            source_trace_id: requestedSrjConnection.source_trace_id,
+          }
+        })
         let eventOutputPcbTraces = stageOutputTraces
         if (
           !transformedSimpleRouteJson &&
@@ -2022,7 +2047,7 @@ export class Group<Props extends z.ZodType<any, any, any> = typeof groupProps>
           eventOutputPcbTraces =
             getAccumulatedPcbTracesWithStageOutputReplacements({
               accumulatedPcbTraces: simpleRouteJson.traces ?? [],
-              stageOutputPcbTraces: traces,
+              stageOutputPcbTraces: stageOutputTraces,
             })
         }
         const outputSimpleRouteJson = {
@@ -2445,7 +2470,10 @@ export class Group<Props extends z.ZodType<any, any, any> = typeof groupProps>
       const pcb_trace = db.pcb_trace.insert({
         subcircuit_id: this.subcircuit_id!,
         route: getCircuitJsonPcbTraceRoute(cjRoute as any),
-        // source_trace_id: circuitTrace.source_trace_id!,
+        source_trace_id: getSourceTraceIdForRoutedTrace({
+          db,
+          trace: routedTrace,
+        }),
       })
       claimSrjAssignablePcbViasTraversedByRoute({
         db,
@@ -2548,7 +2576,6 @@ export class Group<Props extends z.ZodType<any, any, any> = typeof groupProps>
           ...pcb_trace,
           route: cjRoute,
         },
-        subcircuit_id: this.subcircuit_id,
       })
       cjRoute = ensureRouteStartsAtSourceTraceStart({
         db,
@@ -2584,7 +2611,6 @@ export class Group<Props extends z.ZodType<any, any, any> = typeof groupProps>
               ...pcb_trace,
               route: circuitJsonSegment,
             },
-            subcircuit_id: this.subcircuit_id,
           })
           const insertedPcbTrace = db.pcb_trace.insert({
             ...pcb_trace,
@@ -2615,7 +2641,6 @@ export class Group<Props extends z.ZodType<any, any, any> = typeof groupProps>
         const sourceTraceId = getSourceTraceIdForRoutedTrace({
           db,
           trace: pcb_trace,
-          subcircuit_id: this.subcircuit_id,
         })
         // NOTE: inputConnectionName isn't really robust- this is from the
         // SRJ we provided to the autorouter- use with caution!

@@ -68,6 +68,11 @@ const getBusSrjConnectionNamesOrThrow = ({
       `Could not find an SRJ connection for "${traceNameOrPortSelector}" in bus "${bus.name}"`,
     )
   }
+  // The bus declaration names this source member. Carry that identity through
+  // net routing rather than reconstructing it later from the returned copper.
+  for (const srjConnection of matchingSrjConnections) {
+    srjConnection.source_trace_id ??= sourceTraceId
+  }
   return matchingSrjConnections.map((srjConnection) => srjConnection.name)
 }
 

@@ -29,6 +29,21 @@ export class BreakoutPoint extends BaseBreakoutPoint<
     }
   }
 
+  doInitialSourceAddConnectivityMapKey(): void {
+    this._matchConnection()
+    // A manual breakout can extend an otherwise unconnected pin. Declare that
+    // source connection before asking the router to produce its copper.
+    if (this.matchedPort && !this._getSourceTraceIdForPort(this.matchedPort)) {
+      const sourceTrace = this.root!.db.source_trace.insert({
+        connected_source_port_ids: [this.matchedPort.source_port_id!],
+        connected_source_net_ids: [],
+        display_name: `${this._parsedProps.connection} breakout`,
+        subcircuit_id: this.getSubcircuit().subcircuit_id!,
+      })
+      this.matchedSourceTraceId = sourceTrace.source_trace_id
+    }
+  }
+
   doInitialPcbPrimitiveRender(): void {
     this._matchConnection()
     this._renderPcbBreakoutPoint()

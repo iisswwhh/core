@@ -1,4 +1,4 @@
-import type { PcbTrace } from "circuit-json"
+import type { PcbTrace, PcbTraceRoutePointWire } from "circuit-json"
 
 /**
  * Reverse a Circuit JSON PCB route without changing its physical copper.
@@ -16,9 +16,18 @@ export const reversePcbTraceRoute = (
     .reverse()
     .map((point) => {
       if (point.route_type === "wire") {
-        const { start_width, end_width, width_interpolation_mode, ...wire } =
-          point
-        return wire
+        const {
+          start_width,
+          end_width,
+          width_interpolation_mode,
+          start_pcb_port_id,
+          end_pcb_port_id,
+          ...wire
+        } = point
+        const reversedWire: PcbTraceRoutePointWire = { ...wire }
+        if (end_pcb_port_id) reversedWire.start_pcb_port_id = end_pcb_port_id
+        if (start_pcb_port_id) reversedWire.end_pcb_port_id = start_pcb_port_id
+        return reversedWire
       }
       if (point.route_type !== "through_pad") return { ...point }
 

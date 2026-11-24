@@ -67,12 +67,12 @@ test("routed trace endpoints over a large opposite-layer pad are attributed to t
     .find((sourceTrace) => sourceTrace.display_name?.includes("U1"))
   expect(signalSourceTrace).toBeDefined()
 
-  // Simulate an autorouted top-layer trace between U1.pin1 and U1.pin2. The
-  // autorouter emits wire points without pcb_port ids, so the source trace
-  // must be recovered from endpoint geometry.
+  // The requested connection identifies the source even when route endpoints
+  // have no PCB port IDs and an unrelated pad occupies the opposite layer.
   const routedTrace = {
     type: "pcb_trace" as const,
     pcb_trace_id: "synthetic_routed_trace",
+    connection_name: signalSourceTrace!.source_trace_id,
     route: [
       { route_type: "wire" as const, x: -3, y: 0, width: 0.15, layer: "top" },
       { route_type: "wire" as const, x: 3, y: 0, width: 0.15, layer: "top" },
@@ -81,8 +81,14 @@ test("routed trace endpoints over a large opposite-layer pad are attributed to t
 
   const attributedSourceTraceId = getSourceTraceIdForRoutedTrace({
     db,
-    trace: routedTrace as any,
+    trace: routedTrace,
   })
 
   expect(attributedSourceTraceId).toBe(signalSourceTrace!.source_trace_id)
+  expect(() =>
+    getSourceTraceIdForRoutedTrace({
+      db,
+      trace: { ...routedTrace, connection_name: undefined },
+    }),
+  ).toThrow("Autorouted trace has no declared source connection")
 })

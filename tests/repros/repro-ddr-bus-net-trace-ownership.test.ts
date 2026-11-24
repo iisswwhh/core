@@ -49,7 +49,6 @@ test("the full board capture exposes DDR data route ownership", async () => {
         resolvedSourceTraceId: getSourceTraceIdForRoutedTrace({
           db,
           trace: pcbTrace,
-          subcircuit_id: pcbTrace.subcircuit_id,
         }),
       }
     })

@@ -1,244 +1,31 @@
 import type { CircuitJsonUtilObjects } from "@tscircuit/circuit-json-util"
-import { distance, pointToSegmentDistance } from "@tscircuit/math-utils"
+import type { PcbTrace, SourcePort, SourceTrace } from "circuit-json"
+import { getFullConnectivityMapFromCircuitJson } from "circuit-json-to-connectivity-map"
 import type {
-  PcbPlatedHole,
-  PcbSmtPad,
-  PcbTrace,
-  SourcePort,
-  SourceTrace,
-} from "circuit-json"
-import { ConnectivityMap } from "circuit-json-to-connectivity-map"
-import type { SimplifiedPcbTrace } from "lib/utils/autorouting/SimpleRouteJson"
-import { applyToPoint, rotateDEG } from "transformation-matrix"
+  SimplifiedPcbTrace,
+  SrjConnectionName,
+} from "lib/utils/autorouting/SimpleRouteJson"
 
 type RoutedTrace = (PcbTrace | SimplifiedPcbTrace) & {
-  source_trace_id?: string
+  source_trace_id?: SourceTrace["source_trace_id"]
+  connection_name?: SrjConnectionName
+  connectsTo?: SimplifiedPcbTrace["connectsTo"]
 }
 type SourcePortId = SourcePort["source_port_id"]
 
-type RoutePointWithPortIds = {
-  route_type: string
-  x?: number
-  y?: number
-  width?: number
-  layer?: string
-  start_pcb_port_id?: string
-  end_pcb_port_id?: string
-}
-
-const POINT_EPSILON = 1e-6
-
-function isPointOnWireSegment({
-  point,
-  segmentStart,
-  segmentEnd,
-}: {
-  point: { x: number; y: number; layer?: string }
-  segmentStart: { x: number; y: number; layer?: string }
-  segmentEnd: { x: number; y: number; layer?: string }
-}) {
-  if (
-    point.layer &&
-    (segmentStart.layer !== point.layer || segmentEnd.layer !== point.layer)
-  ) {
-    return false
-  }
-
-  return (
-    pointToSegmentDistance(point, segmentStart, segmentEnd) <= POINT_EPSILON
-  )
-}
-
-/**
- * Tests a board-world point against a top-view SMT pad. All coordinates and
- * dimensions are millimetres in the right-handed PCB frame (+X right, +Y top).
- * `ccw_rotation` maps pad-local axes into that frame, so this inverse rotation
- * maps the translated point back into pad-local coordinates for containment.
- */
-function isPointInSmtPad({
-  point,
-  pad,
-  traceWidth = 0,
-}: {
-  point: { x: number; y: number }
-  pad: PcbSmtPad
-  traceWidth?: number
-}) {
-  if (pad.shape === "rect" || pad.shape === "rotated_rect") {
-    const unrotatedPoint =
-      pad.shape === "rotated_rect"
-        ? applyToPoint(rotateDEG(-pad.ccw_rotation, pad.x, pad.y), point)
-        : point
-    return (
-      Math.abs(unrotatedPoint.x - pad.x) <= pad.width / 2 + traceWidth / 2 &&
-      Math.abs(unrotatedPoint.y - pad.y) <= pad.height / 2 + traceWidth / 2
-    )
-  }
-
-  if (pad.shape === "circle") {
-    return distance(point, pad) <= (pad as any).radius + traceWidth / 2
-  }
-
-  return false
-}
-
-function isPointInPlatedHole({
-  point,
-  hole,
-  traceWidth = 0,
-}: {
-  point: { x: number; y: number }
-  hole: PcbPlatedHole
-  traceWidth?: number
-}) {
-  return (
-    distance(point, hole) <=
-    ((hole as any).outer_diameter ?? (hole as any).hole_diameter ?? 0) / 2 +
-      traceWidth / 2
-  )
-}
-
-function getEndpointSourcePortIdsFromGeometry(
-  db: CircuitJsonUtilObjects,
-  trace: RoutedTrace,
-) {
-  const sourcePortIds = new Set<SourcePortId>()
-  const route = trace.route as RoutePointWithPortIds[]
-  const endpoints = [route[0], route[route.length - 1]].filter(
-    (point): point is RoutePointWithPortIds & { x: number; y: number } =>
-      Boolean(point) &&
-      point.route_type === "wire" &&
-      point.x !== undefined &&
-      point.y !== undefined,
-  )
-
-  for (const endpoint of endpoints) {
-    const exactEndpointSourcePortIds = new Set<SourcePortId>()
-    for (const pcbPort of db.pcb_port.list()) {
-      if (!pcbPort.source_port_id) continue
-      if (
-        endpoint.layer &&
-        pcbPort.layers &&
-        !pcbPort.layers.includes(endpoint.layer as any)
-      )
-        continue
-      if (distance(endpoint, pcbPort) <= 0.01) {
-        exactEndpointSourcePortIds.add(pcbPort.source_port_id)
-      }
-    }
-    if (exactEndpointSourcePortIds.size > 0) {
-      for (const sourcePortId of exactEndpointSourcePortIds) {
-        sourcePortIds.add(sourcePortId)
-      }
-      continue
-    }
-
-    for (const smtpad of db.pcb_smtpad.list()) {
-      if (!smtpad.pcb_port_id) continue
-      if (endpoint.layer && smtpad.layer !== endpoint.layer) continue
-      if (
-        !isPointInSmtPad({
-          point: endpoint,
-          pad: smtpad,
-          traceWidth: endpoint.width,
-        })
-      )
-        continue
-      const sourcePortId = db.pcb_port.get(smtpad.pcb_port_id)?.source_port_id
-      if (sourcePortId) sourcePortIds.add(sourcePortId)
-    }
-
-    for (const hole of db.pcb_plated_hole.list()) {
-      if (!hole.pcb_port_id) continue
-      if (
-        !isPointInPlatedHole({
-          point: endpoint,
-          hole,
-          traceWidth: endpoint.width,
-        })
-      )
-        continue
-      const sourcePortId = db.pcb_port.get(hole.pcb_port_id)?.source_port_id
-      if (sourcePortId) sourcePortIds.add(sourcePortId)
-    }
-  }
-
-  return [...sourcePortIds]
-}
-
-function getWireRouteEndpoints(trace: RoutedTrace) {
-  const route = (trace.route as RoutePointWithPortIds[]).filter(
-    (
-      point,
-    ): point is RoutePointWithPortIds & {
-      route_type: "wire"
-      x: number
-      y: number
-      layer?: string
-    } =>
-      point.route_type === "wire" &&
-      point.x !== undefined &&
-      point.y !== undefined,
-  )
-
-  return [route[0], route[route.length - 1]].filter(
-    (point): point is NonNullable<(typeof route)[number]> => Boolean(point),
-  )
-}
-
-function getSourceIdsFromConnectedPcbTraces(
-  db: CircuitJsonUtilObjects,
-  trace: RoutedTrace,
-) {
-  const sourceIds = new Set<string>()
-  const endpoints = getWireRouteEndpoints(trace)
-  if (endpoints.length === 0) return []
-
-  for (const existingTrace of db.pcb_trace.list()) {
-    if (!existingTrace.source_trace_id) continue
-    if (existingTrace.pcb_trace_id === trace.pcb_trace_id) continue
-    if (
-      !db.source_trace.get(existingTrace.source_trace_id) &&
-      !db.source_net.get(existingTrace.source_trace_id)
-    ) {
-      continue
-    }
-
-    const existingRoute = existingTrace.route.filter(
-      (
-        point,
-      ): point is Extract<PcbTrace["route"][number], { route_type: "wire" }> =>
-        point.route_type === "wire",
-    )
-
-    for (let i = 0; i < existingRoute.length - 1; i++) {
-      const segmentStart = existingRoute[i]
-      const segmentEnd = existingRoute[i + 1]
-      if (!segmentStart || !segmentEnd) continue
-      for (const endpoint of endpoints) {
-        if (
-          isPointOnWireSegment({
-            point: endpoint,
-            segmentStart,
-            segmentEnd,
-          })
-        ) {
-          sourceIds.add(existingTrace.source_trace_id)
-        }
-      }
-    }
-  }
-
-  return [...sourceIds]
-}
-
-function getSourcePortIdsFromRoutedTrace(
+function getDeclaredSourcePortIdsFromRoutedTrace(
   db: CircuitJsonUtilObjects,
   trace: RoutedTrace,
 ) {
   const sourcePortIds = new Set<SourcePortId>()
 
-  for (const point of trace.route as RoutePointWithPortIds[]) {
+  for (const pcbPortId of trace.connectsTo ?? []) {
+    const sourcePortId = db.pcb_port.get(pcbPortId)?.source_port_id
+    if (sourcePortId) sourcePortIds.add(sourcePortId)
+  }
+
+  for (const point of trace.route) {
+    if (point.route_type !== "wire") continue
     for (const pcbPortId of [point.start_pcb_port_id, point.end_pcb_port_id]) {
       if (!pcbPortId) continue
       const sourcePortId = db.pcb_port.get(pcbPortId)?.source_port_id
@@ -246,105 +33,127 @@ function getSourcePortIdsFromRoutedTrace(
     }
   }
 
-  if (sourcePortIds.size > 0) return [...sourcePortIds]
-
-  return getEndpointSourcePortIdsFromGeometry(db, trace)
+  return [...sourcePortIds]
 }
 
-function buildSourceConnectivityMap(sourceTraces: SourceTrace[]) {
-  const connMap = new ConnectivityMap({})
-
-  connMap.addConnections(
-    sourceTraces.map((trace) => [
-      trace.source_trace_id,
-      ...trace.connected_source_port_ids,
-      ...trace.connected_source_net_ids,
-    ]),
-  )
-
-  return connMap
+function getSourcePortDisplayName(
+  db: CircuitJsonUtilObjects,
+  sourcePortId: SourcePortId,
+) {
+  const sourcePort = db.source_port.get(sourcePortId)
+  const sourceComponent = sourcePort?.source_component_id
+    ? db.source_component.get(sourcePort.source_component_id)
+    : undefined
+  return `${sourceComponent?.name ?? "unnamed component"}.${sourcePort?.name ?? "unnamed pin"}`
 }
 
 export function getSourceTraceIdForRoutedTrace({
   db,
   trace,
-  subcircuit_id,
 }: {
   db: CircuitJsonUtilObjects
   trace: RoutedTrace
-  subcircuit_id?: string | null
 }) {
-  if (trace.source_trace_id && db.source_trace.get(trace.source_trace_id)) {
-    return trace.source_trace_id
-  }
-
-  const routedSourceNet = trace.source_trace_id
-    ? db.source_net.get(trace.source_trace_id)
-    : undefined
-  const sourceTraces = db.source_trace.list()
-  const connMap = buildSourceConnectivityMap(sourceTraces)
-  const routedSourceNetConnectivityId = routedSourceNet
-    ? connMap.getNetConnectedToId(routedSourceNet.source_net_id)
-    : undefined
-  const routedNetSourceTraces = routedSourceNetConnectivityId
-    ? sourceTraces.filter(
-        (sourceTrace) =>
-          connMap.getNetConnectedToId(sourceTrace.source_trace_id) ===
-          routedSourceNetConnectivityId,
-      )
-    : []
-  const soleRoutedNetSourceTrace =
-    routedNetSourceTraces.length === 1 ? routedNetSourceTraces[0] : undefined
-  const sourcePortIds = getSourcePortIdsFromRoutedTrace(db, trace)
-  if (sourcePortIds.length === 0) {
-    return (
-      soleRoutedNetSourceTrace?.source_trace_id ??
-      routedSourceNet?.source_net_id ??
-      getSourceIdsFromConnectedPcbTraces(db, trace)[0]
+  const connMap = getFullConnectivityMapFromCircuitJson(db.toArray())
+  const declaredSourcePortIds = getDeclaredSourcePortIdsFromRoutedTrace(
+    db,
+    trace,
+  )
+  const declaredEndpointNetIds = new Set(
+    declaredSourcePortIds.flatMap((sourceId) => {
+      const netId = connMap.getNetConnectedToId(sourceId)
+      return netId ? [netId] : []
+    }),
+  )
+  if (declaredEndpointNetIds.size > 1) {
+    throw new Error(
+      `Autorouted trace declares endpoints on different intended nets: ${declaredSourcePortIds
+        .map((sourcePortId) => getSourcePortDisplayName(db, sourcePortId))
+        .join(", ")}`,
     )
   }
-
-  const endpointNetIds = sourcePortIds
-    .map((sourcePortId) => connMap.getNetConnectedToId(sourcePortId))
-    .filter((netId): netId is string => Boolean(netId))
-
-  const exactSourceTrace =
-    sourcePortIds.length >= 2
-      ? sourceTraces.find((sourceTrace) =>
-          sourcePortIds.every((sourcePortId) =>
-            sourceTrace.connected_source_port_ids.includes(sourcePortId),
-          ),
-        )
-      : undefined
-  if (exactSourceTrace) return exactSourceTrace.source_trace_id
-
-  // A sole source trace also owns split pieces without both terminals.
-  if (soleRoutedNetSourceTrace) return soleRoutedNetSourceTrace.source_trace_id
-  // Shared branches must not inherit one of several local traces' constraints.
-  if (routedSourceNet) return routedSourceNet.source_net_id
-
-  const sourceTracesInEndpointNets = sourceTraces.filter((sourceTrace) => {
-    const sourceTraceNetId = connMap.getNetConnectedToId(
-      sourceTrace.source_trace_id,
+  // The router's connection name identifies the requested source connection.
+  // Missing ownership stays missing; endpoint geometry cannot supply intent.
+  const sourceOwnerId = trace.source_trace_id ?? trace.connection_name
+  const sourceOwner = sourceOwnerId
+    ? (db.source_trace.get(sourceOwnerId) ?? db.source_net.get(sourceOwnerId))
+    : undefined
+  if (!sourceOwner) {
+    throw new Error(
+      "Autorouted trace has no declared source connection. Preserve its source owner or input connection name.",
     )
-    return endpointNetIds.some((netId) => netId === sourceTraceNetId)
-  })
+  }
+  const declaredOwnerId =
+    sourceOwner.type === "source_trace"
+      ? sourceOwner.source_trace_id
+      : sourceOwner.source_net_id
+  const declaredOwnerConnectivityNetId = declaredOwnerId
+    ? connMap.getNetConnectedToId(declaredOwnerId)
+    : undefined
+  const requestedSourceOwner = trace.connection_name
+    ? (db.source_trace.get(trace.connection_name) ??
+      db.source_net.get(trace.connection_name))
+    : undefined
+  if (
+    requestedSourceOwner &&
+    trace.connection_name &&
+    connMap.getNetConnectedToId(trace.connection_name) !==
+      declaredOwnerConnectivityNetId
+  ) {
+    throw new Error(
+      "Autorouted trace declares conflicting source connections. Preserve the requested source owner.",
+    )
+  }
+  if (
+    declaredOwnerConnectivityNetId &&
+    [...declaredEndpointNetIds].some(
+      (netId) => netId !== declaredOwnerConnectivityNetId,
+    )
+  ) {
+    const ownerSourceNet =
+      sourceOwner.type === "source_net"
+        ? sourceOwner
+        : db.source_net
+            .list()
+            .find(
+              (sourceNet) =>
+                connMap.getNetConnectedToId(sourceNet.source_net_id) ===
+                declaredOwnerConnectivityNetId,
+            )
+    const ownerDisplayName =
+      ownerSourceNet?.name ??
+      sourceOwner.name ??
+      (sourceOwner.type === "source_trace"
+        ? sourceOwner.display_name
+        : undefined) ??
+      "unnamed source connection"
+    throw new Error(
+      `Autorouted trace assigned to ${ownerDisplayName} declares endpoints outside its intended source net: ${declaredSourcePortIds
+        .map((sourcePortId) => getSourcePortDisplayName(db, sourcePortId))
+        .join(", ")}`,
+    )
+  }
+  if (sourceOwner.type === "source_trace") return sourceOwner.source_trace_id
 
-  const connectedToEndpoint = sourceTracesInEndpointNets.filter((sourceTrace) =>
-    sourceTrace.connected_source_port_ids.some((sourcePortId) =>
-      sourcePortIds.includes(sourcePortId),
+  const routedNetSourceTraces = db.source_trace
+    .list()
+    .filter(
+      (sourceTrace) =>
+        connMap.getNetConnectedToId(sourceTrace.source_trace_id) ===
+        declaredOwnerConnectivityNetId,
+    )
+  // A net with one source trace can retain that trace's routing constraints.
+  if (routedNetSourceTraces.length === 1)
+    return routedNetSourceTraces[0].source_trace_id
+  // A declared endpoint can identify a unique branch within this already
+  // validated net (for example, a constrained pin-to-plane connection).
+  // Shared endpoints remain net-owned; touching copper never identifies intent.
+  const endpointSourceTraces = routedNetSourceTraces.filter((sourceTrace) =>
+    declaredSourcePortIds.some((sourcePortId) =>
+      sourceTrace.connected_source_port_ids.includes(sourcePortId),
     ),
   )
-
-  const candidates =
-    connectedToEndpoint.length > 0
-      ? connectedToEndpoint
-      : sourceTracesInEndpointNets
-  if (candidates.length === 0) return undefined
-
-  return (
-    candidates.find(
-      (sourceTrace) => sourceTrace.subcircuit_id === subcircuit_id,
-    ) ?? candidates[0]
-  )?.source_trace_id
+  if (endpointSourceTraces.length === 1)
+    return endpointSourceTraces[0].source_trace_id
+  return sourceOwner.source_net_id
 }

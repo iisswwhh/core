@@ -2,8 +2,8 @@ import { type PcbStyle, viaProps } from "@tscircuit/props"
 import type { LayerRef, PcbVia } from "circuit-json"
 import { createNetsFromProps } from "lib/utils/components/createNetsFromProps"
 import { getViaSpanLayers } from "lib/utils/getViaSpanLayers"
-import { getViaDiameterDefaultsWithOverrides } from "lib/utils/pcbStyle/getViaDiameterDefaults"
 import { getViaTenting } from "lib/utils/getViaTenting"
+import { getViaDiameterDefaultsWithOverrides } from "lib/utils/pcbStyle/getViaDiameterDefaults"
 import { z } from "zod"
 import { PrimitiveComponent } from "../base-components/PrimitiveComponent"
 import { Net } from "./Net"
@@ -283,6 +283,16 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
       !sourceTraceId && connectedNetOrTrace instanceof Net
         ? connectedNetOrTrace.source_net_id
         : undefined
+    if (!this._parsedProps.connectsTo && sourceTraceId) {
+      // A footprint via inside one pad inherits that pad's source assignment.
+      // Preserve it on the source record before any routed copper is created.
+      db.source_manually_placed_via.update(
+        this.source_manually_placed_via_id!,
+        {
+          source_trace_id: sourceTraceId,
+        },
+      )
+    }
     const pcb_via = db.pcb_via.insert({
       x: position.x,
       y: position.y,

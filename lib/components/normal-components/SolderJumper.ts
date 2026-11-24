@@ -5,12 +5,25 @@ import {
 } from "@tscircuit/props"
 import { normalizeDegrees } from "@tscircuit/math-utils"
 import { Port } from "../primitive-components/Port"
+import type { SourceTrace } from "circuit-json"
+import {
+  createDeclaredJumperBridgeTraces,
+  assignDeclaredJumperBridgeTraces,
+} from "lib/utils/components/declared-jumper-bridge-traces"
 import type { SchematicBoxDimensions } from "lib/utils/schematic/getAllDimensionsForSchematicBox"
 
 export class SolderJumper<
   PinLabels extends string = never,
 > extends NormalComponent<typeof solderjumperProps, PinLabels> {
   schematicDimensions: SchematicBoxDimensions | null = null
+  private bridgeSourceTraces: SourceTrace[] = []
+
+  override doInitialSourceParentAttachment() {
+    super.doInitialSourceParentAttachment()
+    for (const sourceTrace of this.bridgeSourceTraces)
+      this.root!.db.source_trace.delete(sourceTrace.source_trace_id)
+    this.bridgeSourceTraces = createDeclaredJumperBridgeTraces(this)
+  }
 
   private _getPinCountFromFootprintString(footprint: string): 2 | 3 | null {
     const match = footprint.match(/^solderjumper([23])(?:_|$)/)
@@ -291,5 +304,9 @@ export class SolderJumper<
         segment.end_pcb_port_id = updatePortId(segment.end_pcb_port_id)
       }
     }
+    assignDeclaredJumperBridgeTraces({
+      component: this,
+      sourceTraces: this.bridgeSourceTraces,
+    })
   }
 }

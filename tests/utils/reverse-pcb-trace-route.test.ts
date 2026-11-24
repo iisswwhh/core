@@ -4,7 +4,14 @@ import { reversePcbTraceRoute } from "lib/utils/reverse-pcb-trace-route"
 
 test("preserves variable wire segment widths when reversing a PCB route", () => {
   const route: PcbTrace["route"] = [
-    { route_type: "wire", x: 0, y: 0, width: 0.3, layer: "top" },
+    {
+      route_type: "wire",
+      x: 0,
+      y: 0,
+      width: 0.3,
+      layer: "top",
+      start_pcb_port_id: "pcb_port_a",
+    },
     { route_type: "wire", x: 1, y: 0, width: 0.5, layer: "top" },
     { route_type: "wire", x: 2, y: 0, width: 0.4, layer: "top" },
     {
@@ -27,14 +34,28 @@ test("preserves variable wire segment widths when reversing a PCB route", () => 
     },
     { route_type: "wire", x: 5, y: 0, width: 0.9, layer: "top" },
     { route_type: "wire", x: 6, y: 0, width: 1, layer: "top" },
-    { route_type: "wire", x: 7, y: 0, width: 1.1, layer: "top" },
+    {
+      route_type: "wire",
+      x: 7,
+      y: 0,
+      width: 1.1,
+      layer: "top",
+      end_pcb_port_id: "pcb_port_b",
+    },
   ]
   const originalRoute = structuredClone(route)
 
   const reversed = reversePcbTraceRoute(route)
 
   expect(reversed).toEqual([
-    { route_type: "wire", x: 7, y: 0, width: 1, layer: "top" },
+    {
+      route_type: "wire",
+      x: 7,
+      y: 0,
+      width: 1,
+      layer: "top",
+      start_pcb_port_id: "pcb_port_b",
+    },
     { route_type: "wire", x: 6, y: 0, width: 0.9, layer: "top" },
     { route_type: "wire", x: 5, y: 0, width: 1.1, layer: "top" },
     {
@@ -57,7 +78,14 @@ test("preserves variable wire segment widths when reversing a PCB route", () => 
     },
     { route_type: "wire", x: 2, y: 0, width: 0.5, layer: "top" },
     { route_type: "wire", x: 1, y: 0, width: 0.3, layer: "top" },
-    { route_type: "wire", x: 0, y: 0, width: 0.4, layer: "top" },
+    {
+      route_type: "wire",
+      x: 0,
+      y: 0,
+      width: 0.4,
+      layer: "top",
+      end_pcb_port_id: "pcb_port_a",
+    },
   ])
   expect(reversePcbTraceRoute(reversed)).toEqual(route)
   expect(route).toEqual(originalRoute)

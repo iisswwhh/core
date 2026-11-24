@@ -22,6 +22,7 @@ import { getDominantDirection } from "lib/utils/autorouting/getDominantDirection
 import { mergeRoutes } from "lib/utils/autorouting/mergeRoutes"
 import { createNetsFromProps } from "lib/utils/components/createNetsFromProps"
 import { getClosest } from "lib/utils/getClosest"
+import type { PcbPortId } from "lib/utils/circuit-json/circuit-json-id-types"
 import { isRouteOutsideBoard } from "lib/utils/is-route-outside-board"
 import { getObstaclesFromCircuitJson } from "lib/utils/obstacles/getObstaclesFromCircuitJson"
 import { pairs } from "lib/utils/pairs"
@@ -75,6 +76,7 @@ export class Trace
   isAntennaTrace = false
   schematic_trace_id: string | null = null
   _inflatedPcbTraces?: PcbTrace[]
+  _inflatedPcbPortSelectors?: Map<PcbPortId, string>
   _inflatedPcbVias?: PcbVia[]
   _portsRoutedOnPcb: Port[]
   subcircuit_connectivity_map_key: string | null = null

@@ -47,7 +47,11 @@ test("routes a net at its nominal trace width", async () => {
     .map((trace) => trace.source_trace_id)
   const netTraces = circuit.db.pcb_trace
     .list()
-    .filter((trace) => sourceTraceIds.includes(trace.source_trace_id!))
+    .filter(
+      (trace) =>
+        trace.source_trace_id === sourceNet.source_net_id ||
+        sourceTraceIds.includes(trace.source_trace_id!),
+    )
   expect(netTraces.length).toBeGreaterThan(0)
   for (const trace of netTraces) {
     for (const point of trace.route) {

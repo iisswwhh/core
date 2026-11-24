@@ -14,6 +14,7 @@ import { getSourcePortConnectivityMapFromCircuitJson } from "circuit-json-to-con
 import { getSchematicNetLabelTextWidth } from "lib/utils/schematic/computeSchematicNetLabelCenter"
 import { convertFacingDirectionToElbowDirection } from "lib/utils/schematic/convertFacingDirectionToElbowDirection"
 import { getSchematicComponentWithTextBounds } from "lib/utils/schematic/getSchematicComponentWithTextBounds"
+import { isSourceTraceInternalConnection } from "lib/utils/circuit-json/is-source-trace-internal-connection"
 import type { NetLabel } from "../../NetLabel"
 import { Port } from "../../Port"
 import { Group } from "../Group"
@@ -460,7 +461,9 @@ export function createSchematicTraceSolverInputProblem(
   // Find all traces that are either in this subcircuit or connected to ports
   // within this subcircuit. This is necessary for traces that cross subcircuit
   // boundaries.
+  const internalConnections = db.source_component_internal_connection.list()
   const tracesInScope = db.source_trace.list().filter((st) => {
+    if (isSourceTraceInternalConnection(st, internalConnections)) return false
     if (st.subcircuit_id === group.subcircuit_id) return true
     for (const source_port_id of st.connected_source_port_ids) {
       if (sourcePortIdToSchPortId.has(asSourcePortId(source_port_id))) {

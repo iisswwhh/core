@@ -1,5 +1,8 @@
 import { createComponentsFromCircuitJson } from "lib/utils/createComponentsFromCircuitJson"
 import type { InflatorContext } from "../InflatorFn"
+import { PcbTrace } from "lib/components/primitive-components/PcbTrace"
+import { PcbVia } from "lib/components/primitive-components/PcbVia"
+import { getInflatedPcbPortSelectors } from "./inflateSourceTrace"
 
 /**
  * Inflates standalone PCB primitives (silkscreen, fab notes, pcb notes, etc.)
@@ -9,6 +12,51 @@ export function inflateStandalonePcbPrimitives(
   inflatorContext: InflatorContext,
 ) {
   const { injectionDb, subcircuit, groupsMap } = inflatorContext
+  const importedTraces: PcbTrace[] = []
+
+  for (const pcbTrace of injectionDb.pcb_trace.list()) {
+    if (pcbTrace.pcb_component_id) continue
+    if (
+      pcbTrace.source_trace_id &&
+      injectionDb.source_trace.get(pcbTrace.source_trace_id)
+    )
+      continue
+    const sourceNet = pcbTrace.source_trace_id
+      ? injectionDb.source_net.get(pcbTrace.source_trace_id)
+      : undefined
+    if (pcbTrace.source_trace_id && !sourceNet) {
+      throw new Error(
+        "Cannot restore imported trace: its source owner is missing",
+      )
+    }
+    const trace = new PcbTrace({
+      route: pcbTrace.route,
+      source_trace_id: pcbTrace.source_trace_id,
+    })
+    trace._inflatedPcbTrace = pcbTrace
+    trace._inflatedSourceNetName = sourceNet?.name
+    trace._inflatedPcbPortSelectors = getInflatedPcbPortSelectors(
+      [pcbTrace],
+      inflatorContext,
+    )
+    // Existing standalone vias retain their original drill and plating metadata.
+    for (const [index, point] of pcbTrace.route.entries()) {
+      if (point.route_type !== "via") continue
+      if (
+        injectionDb.pcb_via
+          .list()
+          .some(
+            (via) =>
+              via.pcb_trace_id === pcbTrace.pcb_trace_id &&
+              via.x === point.x &&
+              via.y === point.y,
+          )
+      )
+        trace._materializedRouteViaIndices.add(index)
+    }
+    subcircuit.add(trace)
+    importedTraces.push(trace)
+  }
 
   // Get all elements that are standalone primitives
   const standalonePrimitiveTypes = [
@@ -83,6 +131,13 @@ export function inflateStandalonePcbPrimitives(
 
   // Add all inflated components to the subcircuit
   for (const component of components) {
+    if (component instanceof PcbVia) {
+      component._importedPcbTrace = importedTraces.find(
+        (trace) =>
+          trace._inflatedPcbTrace?.pcb_trace_id ===
+          component._importedPcbTraceId,
+      )
+    }
     subcircuit.add(component)
   }
 }

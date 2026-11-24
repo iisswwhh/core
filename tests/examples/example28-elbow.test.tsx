@@ -50,7 +50,10 @@ test("example28 fix elbow", async () => {
     </board>,
   )
 
-  circuit.render()
+  await circuit.renderUntilSettled()
 
-  expect(circuit).toMatchSchematicSnapshot(import.meta.path)
+  expect(
+    circuit.db.schematic_net_label.list().map((label) => label.text),
+  ).toContain("V3_3")
+  await expect(circuit).toMatchSchematicSnapshot(import.meta.path)
 })

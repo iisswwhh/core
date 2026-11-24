@@ -81,6 +81,7 @@ test("LMG342X pad-center route endpoints preserve source trace attribution", asy
   const routedTrace: SimplifiedPcbTrace = {
     type: "pcb_trace",
     pcb_trace_id: "lmg342x_feedback_route",
+    connection_name: feedbackSourceTrace.source_trace_id,
     route: [
       { route_type: "wire", x: 0, y: -3, width: 0.15, layer: "top" },
       { route_type: "wire", x: 0, y: 0, width: 0.15, layer: "top" },

@@ -33,7 +33,7 @@ function getWireSegments(traces: PcbTrace[]) {
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
 }
 
-test("split via-to-via route loses ownership despite identical connected copper", async () => {
+test("split via-to-via routes retain their declared source ownership", async () => {
   // A deterministic router response isolates Core's import, not solver quality.
   const renderedCircuits = []
   for (const split of [true, false]) {
@@ -133,11 +133,7 @@ test("split via-to-via route loses ownership despite identical connected copper"
         <pcbnotetext
           pcbY={2.2}
           fontSize={0.45}
-          text={
-            split
-              ? "Top bridge: connection identity missing"
-              : "Top bridge: connection identity retained"
-          }
+          text="Top bridge: declared connection identity retained"
         />
         <pcbnotetext
           pcbY={-2}
@@ -147,11 +143,7 @@ test("split via-to-via route loses ownership despite identical connected copper"
         <pcbnotetext
           pcbY={-3.4}
           fontSize={0.5}
-          text={
-            split
-              ? "Actual: 8 false contact / endpoint errors"
-              : "Actual: 0 errors; ownership retained"
-          }
+          text="Actual: 0 errors; ownership retained"
         />
         <pcbnotetext
           pcbY={-4.7}
@@ -195,30 +187,17 @@ test("split via-to-via route loses ownership despite identical connected copper"
       })),
   )
   const sourceTraceId = splitCircuit.db.source_trace.list()[0].source_trace_id
-  // Pin current broken behavior. A fix should retain ownership on all pieces
-  // and remove these diagnostics without changing any copper geometry.
   expect(splitTraces.map((trace) => trace.source_trace_id)).toEqual([
     sourceTraceId,
-    undefined,
+    sourceTraceId,
     sourceTraceId,
   ])
   const errors = splitCircuit.db.pcb_trace_error.list()
-  expect(errors).toHaveLength(8)
-  expect(
-    errors.filter((error) => error.message.includes("accidental contact")),
-  ).toHaveLength(4)
-  expect(
-    errors.filter((error) => error.message.includes("disconnected endpoint")),
-  ).toHaveLength(2)
-  expect(
-    errors.filter((error) => error.message.includes("dangling endpoint")),
-  ).toHaveLength(2)
+  expect(errors).toHaveLength(0)
   expect(continuousCircuit.db.pcb_trace_error.list()).toEqual([])
   expect(continuousTraces[0].source_trace_id).toBe(
     continuousCircuit.db.source_trace.list()[0].source_trace_id,
   )
-  // The eight coincident native error labels obscure the bridge. Keep the
-  // asserted diagnostic totals in PCB notes and show the unchanged copper.
   const snapshotOptions = {
     shouldDrawErrors: false,
     showSolderMask: false,

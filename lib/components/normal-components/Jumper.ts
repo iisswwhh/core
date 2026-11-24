@@ -2,6 +2,11 @@ import { NormalComponent } from "lib/components/base-components/NormalComponent"
 import { jumperProps, resolveManufacturerPartNumber } from "@tscircuit/props"
 import { normalizeDegrees } from "@tscircuit/math-utils"
 import { Port } from "../primitive-components/Port"
+import type { SourceTrace } from "circuit-json"
+import {
+  createDeclaredJumperBridgeTraces,
+  assignDeclaredJumperBridgeTraces,
+} from "lib/utils/components/declared-jumper-bridge-traces"
 import type { BaseSymbolName } from "lib/utils/constants"
 import {
   getAllDimensionsForSchematicBox,
@@ -15,6 +20,14 @@ export class Jumper<PinLabels extends string = never> extends NormalComponent<
   PinLabels
 > {
   schematicDimensions: SchematicBoxDimensions | null = null
+  private bridgeSourceTraces: SourceTrace[] = []
+
+  override doInitialSourceParentAttachment() {
+    super.doInitialSourceParentAttachment()
+    for (const sourceTrace of this.bridgeSourceTraces)
+      this.root!.db.source_trace.delete(sourceTrace.source_trace_id)
+    this.bridgeSourceTraces = createDeclaredJumperBridgeTraces(this)
+  }
 
   get config() {
     // Jumpers always render as generic schematic boxes instead of using
@@ -139,5 +152,9 @@ export class Jumper<PinLabels extends string = never> extends NormalComponent<
         segment.end_pcb_port_id = updatePortId(segment.end_pcb_port_id)
       }
     }
+    assignDeclaredJumperBridgeTraces({
+      component: this,
+      sourceTraces: this.bridgeSourceTraces,
+    })
   }
 }

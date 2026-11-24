@@ -9,6 +9,7 @@ import { getTraceLength } from "./trace-utils/compute-trace-length"
 import { insertPcbPathViaContactErrors } from "./insert-pcb-path-via-contact-errors"
 import type { Port } from "../Port"
 import type { Trace } from "./Trace"
+import { remapInflatedPcbPortId } from "lib/utils/circuit-json/remap-inflated-pcb-port-id"
 import { applyToPoint, identity } from "transformation-matrix"
 import { clipTraceEndAtPad } from "../../../utils/trace-clipping/clipTraceEndAtPad"
 import { getViaDiameterDefaults } from "../../../utils/pcbStyle/getViaDiameterDefaults"
@@ -153,6 +154,14 @@ export function Trace_doInitialPcbManualTraceRender(trace: Trace) {
             ...restOfPoint,
             ...transformedPoint,
             layer: maybeFlipLayer(point.layer),
+            start_pcb_port_id: remapInflatedPcbPortId(
+              trace,
+              point.start_pcb_port_id,
+            ),
+            end_pcb_port_id: remapInflatedPcbPortId(
+              trace,
+              point.end_pcb_port_id,
+            ),
           } as PcbTraceRoutePoint
         }
 

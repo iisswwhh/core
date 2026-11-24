@@ -364,16 +364,6 @@ export const getSimpleRouteJsonFromCircuitJson = ({
     }),
   )
 
-  // Add every equivalent ID from the shared connectivity map to each obstacle.
-  for (const obstacle of obstacles) {
-    const additionalIds = obstacle.connectedTo.flatMap((id) =>
-      sharedConnMap.getIdsConnectedToNet(id),
-    )
-    obstacle.connectedTo = [
-      ...new Set([...obstacle.connectedTo, ...additionalIds]),
-    ]
-  }
-
   // Build mapping from source_port_id to internal connection ID for interconnects
   const internalConnections = db.source_component_internal_connection.list()
   const sourcePortIdToInternalConnectionId = new Map<string, string>()
@@ -896,6 +886,10 @@ export const getSimpleRouteJsonFromCircuitJson = ({
       name:
         net.source_net_id ??
         sharedConnMap.getNetConnectedToId(net.source_net_id),
+      source_trace_id:
+        connectedSourceTraces.length === 1
+          ? connectedSourceTraces[0].source_trace_id
+          : undefined,
       nominalTraceWidth: nominalTraceWidthForConnection,
       width: nominalTraceWidthForConnection,
       pointsToConnect,

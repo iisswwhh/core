@@ -1,6 +1,6 @@
-import { test, expect } from "bun:test"
-import { getTestFixture } from "../fixtures/get-test-fixture"
+import { expect, test } from "bun:test"
 import { getFullConnectivityMapFromCircuitJson } from "circuit-json-to-connectivity-map"
+import { getTestFixture } from "../fixtures/get-test-fixture"
 
 test("board with auto_jumper autorouter for single layer with crossing traces", async () => {
   const { circuit } = getTestFixture()
@@ -51,6 +51,13 @@ test("board with auto_jumper autorouter for single layer with crossing traces", 
       (p) => p.source_component_id === jumperComponent!.source_component_id,
     )
   expect(jumperSourcePorts.length).toBe(8) // 1206x4 jumper has 8 pads
+  const connectedSourcePortIds = circuit.db.source_trace
+    .list()
+    .flatMap((sourceTrace) => sourceTrace.connected_source_port_ids)
+  const connectedJumperPorts = jumperSourcePorts.filter((sourcePort) =>
+    connectedSourcePortIds.includes(sourcePort.source_port_id),
+  )
+  expect(connectedJumperPorts.length).toBeGreaterThan(0)
 
   // Verify pcb_ports exist for the jumper
   const jumperPcbComponent = circuit.db.pcb_component
@@ -135,7 +142,8 @@ test("board with auto_jumper autorouter for single layer with crossing traces", 
       const dx = point.x - pad.x
       const dy = point.y - pad.y
       return Math.sqrt(dx * dx + dy * dy) <= pad.radius
-    } else if (pad.shape === "rect" || pad.shape === "rotated_rect") {
+    }
+    if (pad.shape === "rect" || pad.shape === "rotated_rect") {
       // For simplicity, treat rotated_rect as axis-aligned (good enough for this test)
       const halfWidth = pad.width / 2
       const halfHeight = pad.height / 2

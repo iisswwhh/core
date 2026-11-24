@@ -137,12 +137,14 @@ export function getSavedAutoroutingPhaseTracesFromPaths({
           )
           // Resolve an internal trunk's source before any neighboring copper
           // is inserted, so replay order cannot change ownership.
-          const sourceTraceId =
-            getSourceTraceIdForRoutedTrace({
-              db,
-              trace: { ...trace, source_trace_id: sourceNet?.source_net_id },
-              subcircuit_id: port.getSubcircuit().subcircuit_id,
-            }) ?? connection.source_trace_id
+          const sourceTraceId = getSourceTraceIdForRoutedTrace({
+            db,
+            trace: {
+              ...trace,
+              source_trace_id:
+                connection.source_trace_id ?? sourceNet?.source_net_id,
+            },
+          })
           return { ...trace, source_trace_id: sourceTraceId }
         },
       ),

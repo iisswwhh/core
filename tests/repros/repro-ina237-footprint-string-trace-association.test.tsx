@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { getTestFixture } from "tests/fixtures/get-test-fixture"
+import { getFullConnectivityMapFromCircuitJson } from "circuit-json-to-connectivity-map"
 
 // Reduced from tscircuit/sparkfun-boards#361. The footprint string emits
 // 90-degree rotated pads must retain the correct source trace associations.
@@ -88,6 +89,9 @@ test("INA237 footprint string assigns routed traces to the correct pins", async 
   )
 
   await circuit.renderUntilSettled()
+  const connMap = getFullConnectivityMapFromCircuitJson(
+    circuit.getCircuitJson(),
+  )
 
   const sensor = circuit.db.source_component
     .list()
@@ -123,16 +127,18 @@ test("INA237 footprint string assigns routed traces to the correct pins", async 
               routePoint.end_pcb_port_id === pcbPort.pcb_port_id),
         ),
       )!
-    const routedSourceTrace = circuit.db.source_trace.get(
-      copperTrace.source_trace_id!,
-    )!
-
-    expect(routedSourceTrace.connected_source_port_ids).toContain(
-      routedPort.source_port_id,
-    )
-    expect(routedSourceTrace.connected_source_port_ids).not.toContain(
-      unrelatedPort.source_port_id,
-    )
+    expect(
+      connMap.areIdsConnected(
+        copperTrace.source_trace_id!,
+        routedPort.source_port_id,
+      ),
+    ).toBe(true)
+    expect(
+      connMap.areIdsConnected(
+        copperTrace.source_trace_id!,
+        unrelatedPort.source_port_id,
+      ),
+    ).toBe(false)
   }
 
   await expect(circuit).toMatchPcbSnapshot(import.meta.path, {

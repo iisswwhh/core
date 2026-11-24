@@ -56,10 +56,7 @@ test("net-owned shared branches retain their net without an exact source trace",
         ],
       },
     }),
-  ).toBe(
-    circuit.db.source_trace.list().find((trace) => trace.name === "LOCAL_LEFT")!
-      .source_trace_id,
-  )
+  ).toBe(sourceNet.source_net_id)
   expect(
     getSourceTraceIdForRoutedTrace({
       db: circuit.db,

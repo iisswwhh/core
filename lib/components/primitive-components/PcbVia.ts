@@ -8,6 +8,7 @@ import { getViaSpanLayers } from "lib/utils/getViaSpanLayers"
 import { getViaTenting } from "lib/utils/getViaTenting"
 import { z } from "zod"
 import { PrimitiveComponent } from "../base-components/PrimitiveComponent"
+import type { PcbTrace } from "./PcbTrace"
 
 export const pcbViaProps = viaProps
   .extend({
@@ -34,6 +35,7 @@ export class PcbVia extends PrimitiveComponent<typeof pcbViaProps> {
   pcb_via_id: string | null = null
   // pcb_trace_id copied from imported circuit-json; not a public JSX prop.
   _importedPcbTraceId?: string
+  _importedPcbTrace?: Pick<PcbTrace, "pcb_trace_id">
   isPcbPrimitive = true
 
   get config() {
@@ -135,7 +137,8 @@ export class PcbVia extends PrimitiveComponent<typeof pcbViaProps> {
       layers,
       from_layer: fromLayer,
       to_layer: toLayer,
-      pcb_trace_id: this._importedPcbTraceId,
+      pcb_trace_id:
+        this._importedPcbTrace?.pcb_trace_id ?? this._importedPcbTraceId,
       subcircuit_id: subcircuit?.subcircuit_id ?? undefined,
       pcb_group_id: this.getGroup()?.pcb_group_id ?? undefined,
       net_is_assignable: netIsAssignable,

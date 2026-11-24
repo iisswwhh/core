@@ -1,8 +1,32 @@
 import { serve } from "bun"
 import { afterEach } from "bun:test"
 import { MultilayerIjump } from "@tscircuit/infgrid-ijump-astar"
-import type { SimpleRouteJson } from "lib/utils/autorouting/SimpleRouteJson"
+import type {
+  SimpleRouteJson,
+  SrjConnectionName,
+} from "lib/utils/autorouting/SimpleRouteJson"
 import { getSimpleRouteJsonFromCircuitJson } from "lib/utils/autorouting/getSimpleRouteJsonFromCircuitJson"
+
+// The legacy solver omits connection_name when converting solved connections to
+// traces. Preserve its structured solution identities in the server response.
+class TestServerAutorouter extends MultilayerIjump {
+  solvedConnectionNames: SrjConnectionName[] = []
+
+  override solve() {
+    const solutions = super.solve()
+    this.solvedConnectionNames = solutions
+      .filter((solution) => solution.solved)
+      .map((solution) => solution.connectionName)
+    return solutions
+  }
+
+  override solveAndMapToTraces() {
+    return super.solveAndMapToTraces().map((trace, index) => ({
+      ...trace,
+      connection_name: this.solvedConnectionNames[index],
+    }))
+  }
+}
 
 export const getTestAutoroutingServer = ({
   requireDisplayName = false,
@@ -50,7 +74,7 @@ export const getTestAutoroutingServer = ({
           )
         }
 
-        const autorouter = new MultilayerIjump({
+        const autorouter = new TestServerAutorouter({
           input: simpleRouteJson,
           OBSTACLE_MARGIN: 0.2,
         })
@@ -107,7 +131,7 @@ export const getTestAutoroutingServer = ({
           circuitJson: body.input_circuit_json,
         })
 
-        const autorouter = new MultilayerIjump({
+        const autorouter = new TestServerAutorouter({
           input: simpleRouteJson as any,
           OBSTACLE_MARGIN: 0.2,
         })

@@ -13,6 +13,7 @@ import { type LayerRef, type PcbComponent, length } from "circuit-json"
 import Debug from "debug"
 import type { NormalComponent } from "lib/components/base-components/NormalComponent"
 import { solvePackSolverWithTimeout } from "lib/utils/packing/solvePackSolverWithTimeout"
+import { isSourceTraceInternalConnection } from "lib/utils/circuit-json/is-source-trace-internal-connection"
 import type { Group } from "../Group"
 import { applyComponentConstraintClusters } from "./applyComponentConstraintClusters"
 import { applyPackOutput } from "./applyPackOutput"
@@ -202,8 +203,13 @@ export const Group_doInitialPcbLayoutPack = (group: Group) => {
     }
   }
 
-  // Keep all circuit elements; static components will remain fixed during packing
-  const filteredCircuitJson = db.toArray()
+  // Duplicate declarations of component-internal wiring add no placement
+  // constraint. The internal connection itself remains in the source graph.
+  const internalConnections = db.source_component_internal_connection.list()
+  const filteredCircuitJson = db.toArray().filter((element) => {
+    if (element.type !== "source_trace") return true
+    return !isSourceTraceInternalConnection(element, internalConnections)
+  })
 
   // Calculate bounds if width and height are specified
   let bounds:

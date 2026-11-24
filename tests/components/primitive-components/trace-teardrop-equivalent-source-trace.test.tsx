@@ -41,9 +41,7 @@ test("teardrops follow routed traces attributed to an equivalent source trace", 
     equivalentTrace.subcircuit_connectivity_map_key,
   )
 
-  const routedTrace = circuit.db.pcb_trace.list({
-    source_trace_id: requestingTrace.source_trace_id,
-  })[0]
+  const routedTrace = circuit.db.pcb_trace.list()[0]
   circuit.db.pcb_trace.update(routedTrace.pcb_trace_id, {
     source_trace_id: equivalentTrace.source_trace_id,
   })

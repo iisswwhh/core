@@ -1,7 +1,7 @@
 import { expect, it } from "bun:test"
 import { getTestFixture } from "tests/fixtures/get-test-fixture"
 
-it("allows traces to connect to via layers", () => {
+it("allows traces to connect to via layers", async () => {
   const { circuit } = getTestFixture()
 
   circuit.add(
@@ -53,8 +53,10 @@ it("allows traces to connect to via layers", () => {
     </board>,
   )
 
-  circuit.render()
+  await circuit.renderUntilSettled()
 
-  expect(circuit).toMatchPcbSnapshot(import.meta.path)
-  expect(circuit).toMatchSimple3dSnapshot(import.meta.path)
+  expect(circuit.db.pcb_port_not_connected_error.list()).toEqual([])
+  expect(circuit.db.pcb_autorouting_error.list()).toEqual([])
+  await expect(circuit).toMatchPcbSnapshot(import.meta.path)
+  await expect(circuit).toMatchSimple3dSnapshot(import.meta.path)
 })
