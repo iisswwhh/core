@@ -26,6 +26,10 @@ export class Jumper<PinLabels extends string = never> extends NormalComponent<
     super.doInitialSourceParentAttachment()
     for (const sourceTrace of this.bridgeSourceTraces)
       this.root!.db.source_trace.delete(sourceTrace.source_trace_id)
+    this.bridgeSourceTraces = []
+  }
+
+  doInitialSourceAddConnectivityMapKey() {
     this.bridgeSourceTraces = createDeclaredJumperBridgeTraces(this)
   }
 

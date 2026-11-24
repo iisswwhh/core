@@ -1,3 +1,4 @@
+import type { AnyCircuitElement } from "circuit-json"
 import { createComponentsFromCircuitJson } from "lib/utils/createComponentsFromCircuitJson"
 import type { InflatorContext } from "../InflatorFn"
 import { PcbTrace } from "lib/components/primitive-components/PcbTrace"
@@ -43,14 +44,11 @@ export function inflateStandalonePcbPrimitives(
     for (const [index, point] of pcbTrace.route.entries()) {
       if (point.route_type !== "via") continue
       if (
-        injectionDb.pcb_via
-          .list()
-          .some(
-            (via) =>
-              via.pcb_trace_id === pcbTrace.pcb_trace_id &&
-              via.x === point.x &&
-              via.y === point.y,
-          )
+        injectionDb.pcb_via.getWhere({
+          pcb_trace_id: pcbTrace.pcb_trace_id,
+          x: point.x,
+          y: point.y,
+        })
       )
         trace._materializedRouteViaIndices.add(index)
     }
@@ -78,45 +76,48 @@ export function inflateStandalonePcbPrimitives(
     "pcb_cutout",
     "pcb_soldermask_opening",
     "pcb_solder_paste",
-  ]
+  ] as const
 
-  const standalonePrimitives = injectionDb.toArray().filter((elm) => {
-    if (!standalonePrimitiveTypes.includes(elm.type)) return false
-    if (elm.type === "pcb_via") {
-      if (!elm.pcb_trace_id) return true
-
-      const pcbTrace = injectionDb.pcb_trace.get(elm.pcb_trace_id)
-      const sourceTraceId = pcbTrace?.source_trace_id
-      const isHandledByInflatedTrace =
-        sourceTraceId &&
-        injectionDb.source_trace.get(sourceTraceId) &&
-        pcbTrace?.route.some(
-          (point) =>
-            point.route_type === "via" &&
-            Math.abs(point.x - elm.x) < 0.0001 &&
-            Math.abs(point.y - elm.y) < 0.0001,
-        )
-
-      return !isHandledByInflatedTrace
-    }
-    if (elm.type === "pcb_cutout") {
-      // A cutout is a hole in the board itself: `pcb_cutout` has no
-      // `pcb_component_id` field at all, so it is always standalone. The check
-      // below requires the key to be present and would drop every cutout.
-      return true
-    }
-    if (elm.type === "pcb_solder_paste") {
-      return elm.pcb_component_id === undefined && !elm.pcb_smtpad_id
-    }
-    if (elm.type === "pcb_soldermask_opening") {
-      return elm.pcb_component_id === undefined
-    }
-    // Check for null or undefined pcb_component_id
-    return (
-      "pcb_component_id" in elm &&
-      (elm.pcb_component_id === null || elm.pcb_component_id === undefined)
+  const standalonePrimitives = standalonePrimitiveTypes
+    .flatMap<AnyCircuitElement>((primitiveType) =>
+      injectionDb[primitiveType].list(),
     )
-  })
+    .filter((elm) => {
+      if (elm.type === "pcb_via") {
+        if (!elm.pcb_trace_id) return true
+
+        const pcbTrace = injectionDb.pcb_trace.get(elm.pcb_trace_id)
+        const sourceTraceId = pcbTrace?.source_trace_id
+        const isHandledByInflatedTrace =
+          sourceTraceId &&
+          injectionDb.source_trace.get(sourceTraceId) &&
+          pcbTrace?.route.some(
+            (point) =>
+              point.route_type === "via" &&
+              Math.abs(point.x - elm.x) < 0.0001 &&
+              Math.abs(point.y - elm.y) < 0.0001,
+          )
+
+        return !isHandledByInflatedTrace
+      }
+      if (elm.type === "pcb_cutout") {
+        // A cutout is a hole in the board itself: `pcb_cutout` has no
+        // `pcb_component_id` field at all, so it is always standalone. The check
+        // below requires the key to be present and would drop every cutout.
+        return true
+      }
+      if (elm.type === "pcb_solder_paste") {
+        return elm.pcb_component_id === undefined && !elm.pcb_smtpad_id
+      }
+      if (elm.type === "pcb_soldermask_opening") {
+        return elm.pcb_component_id === undefined
+      }
+      // Check for null or undefined pcb_component_id
+      return (
+        "pcb_component_id" in elm &&
+        (elm.pcb_component_id === null || elm.pcb_component_id === undefined)
+      )
+    })
 
   if (standalonePrimitives.length === 0) return
 

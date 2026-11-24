@@ -113,13 +113,10 @@ export function getSourceTraceIdForRoutedTrace({
     const ownerSourceNet =
       sourceOwner.type === "source_net"
         ? sourceOwner
-        : db.source_net
-            .list()
-            .find(
-              (sourceNet) =>
-                connMap.getNetConnectedToId(sourceNet.source_net_id) ===
-                declaredOwnerConnectivityNetId,
-            )
+        : connMap
+            .getIdsConnectedToNet(declaredOwnerConnectivityNetId)
+            .map((sourceId) => db.source_net.get(sourceId))
+            .find((sourceNet) => sourceNet)
     const ownerDisplayName =
       ownerSourceNet?.name ??
       sourceOwner.name ??
@@ -135,13 +132,12 @@ export function getSourceTraceIdForRoutedTrace({
   }
   if (sourceOwner.type === "source_trace") return sourceOwner.source_trace_id
 
-  const routedNetSourceTraces = db.source_trace
-    .list()
-    .filter(
-      (sourceTrace) =>
-        connMap.getNetConnectedToId(sourceTrace.source_trace_id) ===
-        declaredOwnerConnectivityNetId,
-    )
+  const routedNetSourceTraces = connMap
+    .getIdsConnectedToNet(declaredOwnerConnectivityNetId!)
+    .flatMap((sourceId) => {
+      const sourceTrace = db.source_trace.get(sourceId)
+      return sourceTrace ? [sourceTrace] : []
+    })
   // A net with one source trace can retain that trace's routing constraints.
   if (routedNetSourceTraces.length === 1)
     return routedNetSourceTraces[0].source_trace_id

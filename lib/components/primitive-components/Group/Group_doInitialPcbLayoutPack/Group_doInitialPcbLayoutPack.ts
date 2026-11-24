@@ -9,11 +9,11 @@ import {
   getGraphicsFromPackOutput,
 } from "calculate-packing"
 import type { CircuitJsonUtilObjects } from "@tscircuit/circuit-json-util"
-import { type LayerRef, type PcbComponent, length } from "circuit-json"
+import { type LayerRef, length } from "circuit-json"
 import Debug from "debug"
 import type { NormalComponent } from "lib/components/base-components/NormalComponent"
 import { solvePackSolverWithTimeout } from "lib/utils/packing/solvePackSolverWithTimeout"
-import { isSourceTraceInternalConnection } from "lib/utils/circuit-json/is-source-trace-internal-connection"
+import { removeInternalPackingConnections } from "./removeInternalPackingConnections"
 import type { Group } from "../Group"
 import { applyComponentConstraintClusters } from "./applyComponentConstraintClusters"
 import { applyPackOutput } from "./applyPackOutput"
@@ -189,27 +189,18 @@ export const Group_doInitialPcbLayoutPack = (group: Group) => {
 
   // Mark all components belonging to relatively positioned groups as static
   if (excludedPcbGroupIds.size > 0) {
-    for (const element of db.toArray()) {
-      if (element.type !== "pcb_component") continue
+    for (const pcbComponent of db.pcb_component.list()) {
       const sourceComponent = db.source_component.get(
-        (element as PcbComponent).source_component_id,
+        pcbComponent.source_component_id,
       )
       if (!sourceComponent?.source_group_id) continue
       for (const groupId of excludedPcbGroupIds) {
         if (isDescendantGroup(db, sourceComponent.source_group_id, groupId)) {
-          staticPcbComponentIds.add(element.pcb_component_id)
+          staticPcbComponentIds.add(pcbComponent.pcb_component_id)
         }
       }
     }
   }
-
-  // Duplicate declarations of component-internal wiring add no placement
-  // constraint. The internal connection itself remains in the source graph.
-  const internalConnections = db.source_component_internal_connection.list()
-  const filteredCircuitJson = db.toArray().filter((element) => {
-    if (element.type !== "source_trace") return true
-    return !isSourceTraceInternalConnection(element, internalConnections)
-  })
 
   // Calculate bounds if width and height are specified
   let bounds:
@@ -229,15 +220,13 @@ export const Group_doInitialPcbLayoutPack = (group: Group) => {
     }
   }
 
-  const initialPackOutput = convertCircuitJsonToPackOutput(
-    filteredCircuitJson,
-    {
-      source_group_id: group.source_group_id!,
-      // shouldAddInnerObstacles: true,
-      chipMarginsMap,
-      staticPcbComponentIds: Array.from(staticPcbComponentIds),
-    },
-  )
+  const initialPackOutput = convertCircuitJsonToPackOutput(db.toArray(), {
+    source_group_id: group.source_group_id!,
+    // shouldAddInnerObstacles: true,
+    chipMarginsMap,
+    staticPcbComponentIds: Array.from(staticPcbComponentIds),
+  })
+  removeInternalPackingConnections({ db, packOutput: initialPackOutput })
 
   const packInput: PackInput = {
     ...convertPackOutputToPackInput(initialPackOutput),

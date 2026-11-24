@@ -651,11 +651,9 @@ function convertTreeToMatchPackInputProblem(
   const internalConnections = db.source_component_internal_connection.list()
   for (const [connectivityKey, pins] of connectivityGroups) {
     const tracesWithThisKey = db.source_trace
-      .list()
+      .list({ subcircuit_connectivity_map_key: connectivityKey })
       .filter(
-        (trace) =>
-          trace.subcircuit_connectivity_map_key === connectivityKey &&
-          !isSourceTraceInternalConnection(trace, internalConnections),
+        (trace) => !isSourceTraceInternalConnection(trace, internalConnections),
       )
 
     const hasNetConnections = tracesWithThisKey.some(

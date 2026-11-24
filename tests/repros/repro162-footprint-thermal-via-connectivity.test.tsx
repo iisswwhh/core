@@ -59,8 +59,8 @@ test("repro162: thermal vias declare their exposed-pad pin connection", async ()
       />
       <pcbnotetext
         pcbY="-3mm"
-        fontSize="0.35mm"
-        text="THERMAL VIAS: DECLARED GND PIN"
+        fontSize="0.45mm"
+        text="THERMAL VIAS INHERIT GND CONNECTIVITY"
       />
     </board>,
   )

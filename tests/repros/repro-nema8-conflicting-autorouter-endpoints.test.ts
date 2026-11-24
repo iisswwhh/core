@@ -9,7 +9,7 @@ import { getSourceTraceIdForRoutedTrace } from "lib/components/primitive-compone
 const conflictingPcbTraceId =
   "source_trace_3__source_trace_4__source_trace_5__source_trace_6__source_trace_7__source_trace_8__source_trace_9__source_trace_10__source_trace_11_mst7_0"
 
-test("the full NEMA8 board rejects a routed trace with endpoints on VM and GND", () => {
+test("the full NEMA8 board rejects routed traces that contradict source intent", () => {
   const bytes = gunzipSync(
     readFileSync(
       new URL(
@@ -48,4 +48,35 @@ test("the full NEMA8 board rejects a routed trace with endpoints on VM and GND",
   ).toThrow(
     "Autorouted trace declares endpoints on different intended nets: C_VM_HF1.pin1, D_VM_TVS.pin2",
   )
+
+  // Even when both endpoints agree with each other, they must agree with VM.
+  const capacitorGroundPort = db.pcb_port.get("pcb_port_156")!
+  const wrongNetTrace = {
+    ...autoroutedPcbTrace,
+    source_trace_id: "source_trace_8",
+    route: [
+      {
+        route_type: "wire" as const,
+        x: capacitorGroundPort.x,
+        y: capacitorGroundPort.y,
+        layer: "bottom" as const,
+        width: 0.56,
+        start_pcb_port_id: capacitorGroundPort.pcb_port_id,
+      },
+      ...autoroutedPcbTrace.route.slice(1),
+    ],
+  }
+  expect(() =>
+    getSourceTraceIdForRoutedTrace({ db, trace: wrongNetTrace }),
+  ).toThrow("declares endpoints outside its intended source net")
+  expect(() =>
+    getSourceTraceIdForRoutedTrace({
+      db,
+      trace: {
+        ...wrongNetTrace,
+        source_trace_id: undefined,
+        connection_name: undefined,
+      },
+    }),
+  ).toThrow("Autorouted trace has no declared source connection")
 })
