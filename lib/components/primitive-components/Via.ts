@@ -8,9 +8,8 @@ import { z } from "zod"
 import { PrimitiveComponent } from "../base-components/PrimitiveComponent"
 import { Net } from "./Net"
 import { Port } from "./Port"
-import { isPcbPrimitiveContainedWithinBeforeRender } from "./Port/pcbPrimitiveOverlapBeforeRender"
-import type { SmtPad } from "./SmtPad"
 import type { Trace } from "./Trace/Trace"
+import type { NormalComponent } from "lib/components/base-components/NormalComponent"
 export class Via extends PrimitiveComponent<typeof viaProps> {
   pcb_via_id: string | null = null
   matchedPort: Port | null = null
@@ -18,11 +17,10 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
   source_manually_placed_via_id: string | null = null
   source_trace_id: string | null = null
   subcircuit_connectivity_map_key: string | null = null
+  private connectedPorts: Port[] = []
 
   constructor(props: z.input<typeof viaProps>) {
     super(props)
-    const layers = this._getLayers()
-    ;(this._parsedProps as any).layers = layers
     this.initPorts()
   }
   get config() {
@@ -95,8 +93,7 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
   }
 
   initPorts() {
-    const layers = (this._parsedProps as any).layers as LayerRef[]
-    for (const layer of layers) {
+    for (const layer of this._getLayers()) {
       const port = new Port({ name: layer, layer })
       port.registerMatch(this)
       this.add(port)
@@ -104,14 +101,15 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
   }
 
   /**
-   * Find the Net or Trace that this via is connected to
+   * Find the connection declared by selectors or traces to this via's own ports.
    */
   _getConnectedNetOrTrace(): Net | Trace | null {
     const connectsTo = this._parsedProps.connectsTo
     if (!connectsTo) {
       return (
-        this._getPortFromContainingPad()?._getDirectlyConnectedTraces()[0] ??
-        null
+        this.children.flatMap((child) =>
+          child instanceof Port ? child._getDirectlyConnectedTraces() : [],
+        )[0] ?? null
       )
     }
 
@@ -121,14 +119,18 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
     for (const selector of selectors) {
       if (selector.startsWith("net.")) {
         // Find the net
-        const net = subcircuit.selectOne(selector, {
+        const net = subcircuit.selectOne<Net>(selector, {
           type: "net",
-        }) as Net | null
+        })
         if (net) return net
       }
     }
 
-    return null
+    return (
+      this.connectedPorts.flatMap((port) =>
+        port._getDirectlyConnectedTraces(),
+      )[0] ?? null
+    )
   }
 
   doInitialCreateNetsFromProps(): void {
@@ -139,20 +141,6 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
       this,
       Array.isArray(connectsTo) ? connectsTo : [connectsTo],
     )
-  }
-
-  private _getPortFromContainingPad(): Port | null {
-    if (this.parent?.componentName !== "Footprint") return null
-
-    const containingPadPorts = new Set(
-      this.parent.children
-        .filter((child): child is SmtPad => child.componentName === "SmtPad")
-        .filter((pad) => isPcbPrimitiveContainedWithinBeforeRender(this, pad))
-        .map((pad) => pad.matchedPort)
-        .filter((port): port is Port => port !== null),
-    )
-
-    return containingPadPorts.size === 1 ? [...containingPadPorts][0] : null
   }
 
   doInitialPcbComponentRender(): void {
@@ -192,6 +180,7 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
   }
 
   doInitialSourceTraceRender(): void {
+    this.connectedPorts = []
     const connectsTo = this._parsedProps.connectsTo
     if (!connectsTo) return
 
@@ -200,12 +189,14 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
     const selectors = Array.isArray(connectsTo) ? connectsTo : [connectsTo]
     const connectedPorts: Port[] = []
     const connectedNets: Net[] = []
+    const parentNormalComponent: NormalComponent | null =
+      this.getParentNormalComponent()
 
     for (const selector of selectors) {
       if (selector.startsWith("net.")) {
-        const net = subcircuit.selectOne(selector, {
+        const net = subcircuit.selectOne<Net>(selector, {
           type: "net",
-        }) as Net | null
+        })
         if (!net?.source_net_id) {
           this.renderError(`Could not find net for via selector "${selector}"`)
           return
@@ -214,13 +205,13 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
         continue
       }
 
-      const port =
-        (subcircuit.selectOne(selector, { type: "port" }) as Port | null) ??
-        this.getParentNormalComponent()?.children.find(
-          (child: PrimitiveComponent): child is Port =>
-            child instanceof Port && child.isMatchingAnyOf([selector]),
-        ) ??
-        null
+      const port = parentNormalComponent
+        ? (parentNormalComponent.selectOne<Port>(selector, { type: "port" }) ??
+          parentNormalComponent.children.find(
+            (child): child is Port =>
+              child instanceof Port && child.isMatchingAnyOf([selector]),
+          ))
+        : subcircuit.selectOne<Port>(selector, { type: "port" })
       if (!port?.source_port_id) {
         this.renderError(`Could not find port for via selector "${selector}"`)
         return
@@ -228,6 +219,7 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
       connectedPorts.push(port)
     }
 
+    this.connectedPorts = connectedPorts
     if (connectedPorts.length > 0) {
       const sourceTrace = db.source_trace.insert({
         connected_source_port_ids: connectedPorts.map(
@@ -261,6 +253,17 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
     })
   }
 
+  doInitialSourceAddConnectivityMapKey(): void {
+    if (this.source_trace_id) return
+    const connectedNetOrTrace = this._getConnectedNetOrTrace()
+    if (!connectedNetOrTrace || connectedNetOrTrace instanceof Net) return
+    this.source_trace_id = connectedNetOrTrace.source_trace_id
+    this.root!.db.source_manually_placed_via.update(
+      this.source_manually_placed_via_id!,
+      { source_trace_id: this.source_trace_id ?? undefined },
+    )
+  }
+
   doInitialPcbPrimitiveRender(): void {
     if (this.root?.pcbDisabled) return
     const { db } = this.root!
@@ -274,25 +277,11 @@ export class Via extends PrimitiveComponent<typeof viaProps> {
     const connectedNetOrTrace = this._getConnectedNetOrTrace()
     const { isFlipped } = this._getPcbPrimitiveFlippedHelpers()
     const viaTenting = getViaTenting(this._parsedProps.tented)
-    const sourceTraceId =
-      this.source_trace_id ??
-      (connectedNetOrTrace instanceof Net
-        ? undefined
-        : connectedNetOrTrace?.source_trace_id)
+    const sourceTraceId = this.source_trace_id
     const sourceNetId =
       !sourceTraceId && connectedNetOrTrace instanceof Net
         ? connectedNetOrTrace.source_net_id
         : undefined
-    if (!this._parsedProps.connectsTo && sourceTraceId) {
-      // A footprint via inside one pad inherits that pad's source assignment.
-      // Preserve it on the source record before any routed copper is created.
-      db.source_manually_placed_via.update(
-        this.source_manually_placed_via_id!,
-        {
-          source_trace_id: sourceTraceId,
-        },
-      )
-    }
     const pcb_via = db.pcb_via.insert({
       x: position.x,
       y: position.y,

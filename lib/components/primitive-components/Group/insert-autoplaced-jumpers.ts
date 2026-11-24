@@ -1,6 +1,8 @@
 import type { CircuitJsonUtilObjects } from "@tscircuit/circuit-json-util"
 import type { LayerRef, PcbSmtPadRect } from "circuit-json"
+import { getFullConnectivityMapFromCircuitJson } from "circuit-json-to-connectivity-map"
 
+/** Board-world geometry in mm: +X right, +Y up, +Z above; right-handed. Centers are points. */
 export interface AutoplacedJumperPad {
   center: { x: number; y: number }
   width: number
@@ -10,6 +12,7 @@ export interface AutoplacedJumperPad {
   connectedTo?: string[]
 }
 
+/** Router-placed part in the same board-world frame as AutoplacedJumperPad. */
 export interface AutoplacedJumper {
   jumper_footprint: string
   center: { x: number; y: number }
@@ -17,6 +20,12 @@ export interface AutoplacedJumper {
   width?: number
   height?: number
   pads: AutoplacedJumperPad[]
+}
+
+interface InsertAutoplacedJumpersOptions {
+  db: CircuitJsonUtilObjects
+  output_jumpers: AutoplacedJumper[]
+  subcircuit_id?: string | null
 }
 
 /**
@@ -56,6 +65,65 @@ function groupPadsByInternalConnection(
   return groups.filter((g) => g.length >= 2)
 }
 
+/** Validate the entire router batch before adding any generated source records. */
+function getValidatedAutoplacedJumpers({
+  db,
+  output_jumpers,
+}: InsertAutoplacedJumpersOptions) {
+  const connMap = getFullConnectivityMapFromCircuitJson(db.toArray())
+  // Resolve ownership before inserting anything. A router alias must not become
+  // a source reference just because a generated record later receives that ID.
+  const sourceAssignedJumpers = output_jumpers.map((jumper) => ({
+    ...jumper,
+    pads: jumper.pads.map((pad) => ({
+      ...pad,
+      connectedTo: (pad.connectedTo ?? []).filter(
+        (sourceId) =>
+          db.source_trace.get(sourceId) || db.source_net.get(sourceId),
+      ),
+    })),
+  }))
+  for (const jumper of sourceAssignedJumpers) {
+    const padGroups = [
+      ...jumper.pads.map((pad) => [pad]),
+      ...groupPadsByInternalConnection(jumper.pads, jumper.orientation),
+    ]
+    for (const pads of padGroups) {
+      const sourceConnections = pads.flatMap((pad) =>
+        (pad.connectedTo ?? []).flatMap((sourceId) => {
+          const sourceConnection =
+            db.source_trace.get(sourceId) ?? db.source_net.get(sourceId)
+          return sourceConnection ? [sourceConnection] : []
+        }),
+      )
+      const intendedNetIds = new Set(
+        sourceConnections.map((sourceConnection) =>
+          connMap.getNetConnectedToId(
+            sourceConnection.type === "source_trace"
+              ? sourceConnection.source_trace_id
+              : sourceConnection.source_net_id,
+          ),
+        ),
+      )
+      if (intendedNetIds.size <= 1) continue
+      const sourceNames = new Set(
+        sourceConnections.map(
+          (sourceConnection) =>
+            sourceConnection.name ??
+            (sourceConnection.type === "source_trace"
+              ? sourceConnection.display_name
+              : undefined) ??
+            "unnamed source connection",
+        ),
+      )
+      throw new Error(
+        `Autoplaced jumper would connect different intended source nets: ${[...sourceNames].join(", ")}.`,
+      )
+    }
+  }
+  return sourceAssignedJumpers
+}
+
 /**
  * Insert autoplaced jumpers into the database with full circuit JSON elements:
  * - source_component
@@ -65,12 +133,11 @@ function groupPadsByInternalConnection(
  * - pcb_smtpad (one per pad)
  * - pcb_port (linking source_port to pcb_smtpad)
  */
-export function insertAutoplacedJumpers(params: {
-  db: CircuitJsonUtilObjects
-  output_jumpers: AutoplacedJumper[]
-  subcircuit_id?: string | null
-}): void {
-  const { db, output_jumpers, subcircuit_id } = params
+export function insertAutoplacedJumpers(
+  options: InsertAutoplacedJumpersOptions,
+): void {
+  const output_jumpers = getValidatedAutoplacedJumpers(options)
+  const { db, subcircuit_id } = options
 
   for (
     let jumperIndex = 0;
@@ -121,8 +188,7 @@ export function insertAutoplacedJumpers(params: {
         pin_number: pinNumber,
       })
 
-      // The router declares each jumper pad's intended net in connectedTo.
-      // Record that intent before PCB endpoint references are validated.
+      // Extend only the source connections validated against the original graph.
       for (const sourceId of new Set(pad.connectedTo ?? [])) {
         const sourceTrace = db.source_trace.get(sourceId)
         if (sourceTrace) {

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { getFullConnectivityMapFromCircuitJson } from "circuit-json-to-connectivity-map"
 import { getTestFixture } from "tests/fixtures/get-test-fixture"
 
-test("repro162: thermal vias inside an exposed pad inherit its connectivity", async () => {
+test("repro162: thermal vias declare their exposed-pad pin connection", async () => {
   const { circuit } = getTestFixture()
 
   circuit.add(
@@ -23,6 +23,7 @@ test("repro162: thermal vias inside an exposed pad inherit its connectivity", as
               shape="rect"
             />
             <via
+              connectsTo="pin17"
               pcbX="0.500126mm"
               pcbY="0.499872mm"
               outerDiameter="0.6096mm"
@@ -30,6 +31,7 @@ test("repro162: thermal vias inside an exposed pad inherit its connectivity", as
               layers={["top", "bottom"]}
             />
             <via
+              connectsTo="pin17"
               pcbX="-0.499872mm"
               pcbY="0.499872mm"
               outerDiameter="0.6096mm"
@@ -37,6 +39,7 @@ test("repro162: thermal vias inside an exposed pad inherit its connectivity", as
               layers={["top", "bottom"]}
             />
             <via
+              connectsTo="pin17"
               pcbX="-0.499872mm"
               pcbY="-0.500126mm"
               outerDiameter="0.6096mm"
@@ -44,6 +47,7 @@ test("repro162: thermal vias inside an exposed pad inherit its connectivity", as
               layers={["top", "bottom"]}
             />
             <via
+              connectsTo="pin17"
               pcbX="0.500126mm"
               pcbY="-0.500126mm"
               outerDiameter="0.6096mm"
@@ -55,8 +59,8 @@ test("repro162: thermal vias inside an exposed pad inherit its connectivity", as
       />
       <pcbnotetext
         pcbY="-3mm"
-        fontSize="0.45mm"
-        text="THERMAL VIAS INHERIT GND CONNECTIVITY"
+        fontSize="0.35mm"
+        text="THERMAL VIAS: DECLARED GND PIN"
       />
     </board>,
   )

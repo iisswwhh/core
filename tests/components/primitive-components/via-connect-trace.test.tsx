@@ -55,6 +55,18 @@ it("allows traces to connect to via layers", async () => {
 
   await circuit.renderUntilSettled()
 
+  for (const sourceVia of circuit.db.source_manually_placed_via.list()) {
+    const sourceTrace = circuit.db.source_trace.get(sourceVia.source_trace_id!)!
+    const viaPorts = circuit.db.source_port.list({
+      source_component_id: sourceVia.source_manually_placed_via_id,
+    })
+    expect(sourceTrace).toBeDefined()
+    expect(
+      viaPorts.some((port) =>
+        sourceTrace.connected_source_port_ids.includes(port.source_port_id),
+      ),
+    ).toBe(true)
+  }
   expect(circuit.db.pcb_port_not_connected_error.list()).toEqual([])
   expect(circuit.db.pcb_autorouting_error.list()).toEqual([])
   await expect(circuit).toMatchPcbSnapshot(import.meta.path)

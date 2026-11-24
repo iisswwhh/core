@@ -110,6 +110,16 @@ test("board with auto_jumper autorouter for single layer with crossing traces", 
   expect(pin1NetId).toBeDefined()
   expect(pin9NetId).toBeDefined()
   expect(pin1NetId).toBe(pin9NetId)
+  const u1Pin2Port = circuit.db.source_port.getWhere({
+    name: "pin2",
+    source_component_id: u1Pin1Port!.source_component_id,
+  })!
+  expect(
+    connectivityMap.areIdsConnected(
+      u1Pin1Port!.source_port_id,
+      u1Pin2Port.source_port_id,
+    ),
+  ).toBe(false)
 
   // Get all autoplaced jumper components
   const jumperComponents = circuit.db.source_component

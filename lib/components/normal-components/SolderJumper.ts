@@ -8,7 +8,7 @@ import { Port } from "../primitive-components/Port"
 import type { SourceTrace } from "circuit-json"
 import {
   createDeclaredJumperBridgeTraces,
-  assignDeclaredJumperBridgeTraces,
+  attachDeclaredJumperBridgeTraces,
 } from "lib/utils/components/declared-jumper-bridge-traces"
 import type { SchematicBoxDimensions } from "lib/utils/schematic/getAllDimensionsForSchematicBox"
 
@@ -260,51 +260,7 @@ export class SolderJumper<
   }
 
   doInitialPcbPortAttachment() {
-    const { db } = this.root!
-    const pcb_ports = db.pcb_port.list({
-      pcb_component_id: this.pcb_component_id,
-    })
-    const pinLabelToPortId: Record<string, string> = {}
-    // Map pin labels ("1", "2", etc.) to pcb_port_id
-    for (let i = 0; i < pcb_ports.length; i++) {
-      const port = pcb_ports[i]
-      const sourcePort = db.source_port.get(port.source_port_id)
-      let pinLabel = ""
-      if (typeof sourcePort?.pin_number === "number") {
-        pinLabel = sourcePort.pin_number.toString()
-      } else if (Array.isArray(sourcePort?.port_hints)) {
-        let matchedHint = sourcePort.port_hints.find((h: string) =>
-          /^(pin)?\d+$/.test(h),
-        )
-        if (matchedHint) {
-          if (/^pin\d+$/.test(matchedHint)) {
-            pinLabel = matchedHint.replace(/^pin/, "")
-          } else {
-            pinLabel = matchedHint
-          }
-        }
-      }
-      pinLabelToPortId[pinLabel] = port.pcb_port_id
-    }
-    const traces = db.pcb_trace.list({
-      pcb_component_id: this.pcb_component_id,
-    })
-    const updatePortId = (portId: string | undefined) => {
-      if (portId && typeof portId === "string" && portId.startsWith("{PIN")) {
-        const pin = portId.replace("{PIN", "").replace("}", "")
-        return pinLabelToPortId[pin] || portId
-      }
-      return portId
-    }
-    for (const trace of traces) {
-      if (!trace.route) continue
-      for (const segment of trace.route) {
-        if (segment.route_type !== "wire") continue
-        segment.start_pcb_port_id = updatePortId(segment.start_pcb_port_id)
-        segment.end_pcb_port_id = updatePortId(segment.end_pcb_port_id)
-      }
-    }
-    assignDeclaredJumperBridgeTraces({
+    attachDeclaredJumperBridgeTraces({
       component: this,
       sourceTraces: this.bridgeSourceTraces,
     })

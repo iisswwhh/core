@@ -39,6 +39,7 @@ test("Sample024 explicitly allows via-in-pad in Circuit JSON", async () => {
               shape="rect"
             />
             <via
+              connectsTo="pin17"
               pcbX={-0.5}
               pcbY={-0.5}
               outerDiameter="0.61mm"
@@ -47,6 +48,7 @@ test("Sample024 explicitly allows via-in-pad in Circuit JSON", async () => {
               toLayer="inner1"
             />
             <via
+              connectsTo="pin17"
               pcbX={-0.5}
               pcbY={0.5}
               outerDiameter="0.61mm"
@@ -55,6 +57,7 @@ test("Sample024 explicitly allows via-in-pad in Circuit JSON", async () => {
               toLayer="inner1"
             />
             <via
+              connectsTo="pin17"
               pcbX={0.5}
               pcbY={-0.5}
               outerDiameter="0.61mm"
@@ -63,6 +66,7 @@ test("Sample024 explicitly allows via-in-pad in Circuit JSON", async () => {
               toLayer="inner1"
             />
             <via
+              connectsTo="pin17"
               pcbX={0.5}
               pcbY={0.5}
               outerDiameter="0.61mm"

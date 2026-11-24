@@ -26,4 +26,5 @@ it("should create a Via component with correct properties", () => {
 
   expect(via).not.toBeNull()
   expect(via.props.pcbX).toBe("0mm")
+  expect(via._parsedProps).not.toHaveProperty("layers")
 })
