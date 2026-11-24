@@ -133,7 +133,7 @@ test("split via-to-via routes retain their declared source ownership", async () 
         <pcbnotetext
           pcbY={2.2}
           fontSize={0.45}
-          text="Top bridge: declared connection identity retained"
+          text="Top bridge: connection identity retained"
         />
         <pcbnotetext
           pcbY={-2}
